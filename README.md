@@ -4,6 +4,10 @@ This package implements the square root version of the nonlinear Unscented Kalma
 
 # Installation
 
+Install using pip:
+`pip install pyUKFsqrt`
+
+Or install from source:
 `python ./setup.py install`
 
 # References
