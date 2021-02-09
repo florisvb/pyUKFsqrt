@@ -3,8 +3,9 @@ import numpy.linalg as linalg
 import scipy.linalg
 
 from ukf_sqrt.utils import cholupdate
+from ukf_sqrt.utils import nearestPD
 
-def ukf_sqrt(y, x0, f, h, Q, R, u, alpha=0.001, beta=2):
+def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
 
     # %-----------------------------------------------------------------------
     # %Copyright (C) Floris van Breugel, 2021.
@@ -42,6 +43,7 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, alpha=0.001, beta=2):
     Q  --  Process covariance as a function of time, np.matrix [k, k, N]
     R  --  Measurement covariance as a function of time, np.matrix [m, m, N]
     u  --  Control inputs, np.matrix [k, N]
+    P0 --  Initial covariance, provided as a diagonal [k], defaults to 10 for all vals
 
     m: number of measurements
     k: number of states
@@ -93,7 +95,10 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, alpha=0.001, beta=2):
     ey = np.zeros([ny, 2*L+1])
 
     x[:,0:1] = x0
-    P[:,:,0] = 1*np.eye(nx) #np.diag(P0)
+    if P0 is not None:
+        P[:,:,0] = np.diag(P0)
+    else:
+        P[:,:,0] = 10*np.eye(nx)
     S = linalg.cholesky(P[:,:,0])#.T
 
     for i in range(1, N):
@@ -102,14 +107,13 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, alpha=0.001, beta=2):
         # Only do this if R actually is time dependent
         Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,i]) #.T #chol(Q(:,:,i));
         Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,i]) #.T #chol(R(:,:,i));
-        
-        #Sa = nearestPD(Sa)
 
         xa = np.vstack([x[:,i-1:i], np.zeros([nq,1]), np.zeros([nr,1])])
         gsa = np.hstack((g*Sa.T, -g*Sa.T)) + xa*np.ones([1, 2*L])
         X = np.hstack([xa, gsa])
 
         # Propagate sigma points
+        j = 1
         for j in range(0, 2*L+1):
             X[np.ix_(ix, [j])] = f(X[np.ix_(ix, [j])], 
                                    u[:,i-1:i], 
@@ -129,6 +133,10 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, alpha=0.001, beta=2):
         for j in range(0, (2*L)+1):
             ex[:,j:j+1] = np.sqrt(np.abs(Wc[0,j]))*(X[np.ix_(ix, [j])] - x[:,i:i+1])
             ey[:,j:j+1] = np.sqrt(np.abs(Wc[0,j]))*(Y[:,j:j+1] - yf)
+            
+            ex[np.isnan(ex)] = 0
+            ey[np.isnan(ey)] = 0
+            
             Pxy = Pxy + Wc[0,j]*(X[np.ix_(ix, [j])] - x[:,i:i+1])*(Y[:,j:j+1] - yf).T
 
         qr_Q, qr_R = scipy.linalg.qr( (ex[:, 1:].T) )
@@ -139,12 +147,21 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, alpha=0.001, beta=2):
         Syy = Syy
 
         # Update unscented estimate
-        K = Pxy*np.linalg.pinv(Syy.T*Syy)
+        Syy[np.isnan(Syy)] = 0
+        SyyTSyy = Syy.T*Syy
+        SyyTSyy[np.isnan(SyyTSyy)] = 0
+        Syy_pinv = np.linalg.pinv(SyyTSyy)
+        Syy_pinv[np.isnan(Syy_pinv)] = 0
+        
+        K = Pxy*Syy_pinv
         x[:,i:i+1] = x[:,i:i+1] + K*(y[:,i:i+1] - h(x[:,i:i+1], u[:,i:i+1], np.zeros([nr,1])));
         U = K*Syy.T
         for j in range(ny):
-            S = cholupdate(S, np.ravel(U[:,j]), -1)
-        #S = nearestPD(S)
+            S = cholupdate(S, np.ravel(U[:,j]), sgnW0)
+            #print(S)
+            #S = nearestPD(S)
+            S[np.isnan(S)] = 0
+            #S[np.isinf(S)] = 10000
 
         P[:,:,i] = S.T*S
         #P[:,:,i] = nearestPD(P[:,:,i])

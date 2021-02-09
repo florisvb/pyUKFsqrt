@@ -76,7 +76,12 @@ def nearestPD(A):
     [1] https://www.mathworks.com/matlabcentral/fileexchange/42885-nearestspd
     [2] N.J. Higham, "Computing a nearest symmetric positive semidefinite
     matrix" (1988): https://doi.org/10.1016/0024-3795(88)90223-6
+    
+    nan and inf checks added.
     """
+    A[np.isnan(A)] = 0
+    A[np.isinf(A)] = 0
+    
     B = (A + A.T) / 2
     _, s, V = la.svd(B)
 
