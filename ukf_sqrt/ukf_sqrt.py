@@ -40,8 +40,8 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
     x0 --  initial state, np.matrix [k, 1]
     f  --  function describing process dynamics, with inputs of (x, u, w), returns state estimate xhat
     h  --  function describing observation dynamics, with inputs of (x, u, w), returns measurements
-    Q  --  Process covariance as a function of time, np.matrix [k, k, N]
-    R  --  Measurement covariance as a function of time, np.matrix [m, m, N]
+    Q  --  Process covariance as a function of time, np.matrix [k, k, N] or [k,k]
+    R  --  Measurement covariance as a function of time, np.matrix [m, m, N] or [m,m]
     u  --  Control inputs, np.matrix [k, N]
     P0 --  Initial covariance, provided as a diagonal [k], defaults to 10 for all vals
 
@@ -85,8 +85,18 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
     ir = np.arange((nx+nq), (nx+nq+nr))
 
     Sa = np.zeros([L,L])
-    Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,0])#.T
-    Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,0])#.T
+
+    if len(Q.shape) > 2:
+        Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,0])#.T
+    else:
+        cholQ = linalg.cholesky(Q[:,:])
+        Sa[np.ix_(iq, iq)] = cholQ
+
+    if len(R.shape) > 2:
+        Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,0])#.T
+    else:
+        cholR = linalg.cholesky(R[:,:])
+        Sa[np.ix_(ir, ir)] = cholR
 
     Y = np.zeros([ny, 2*L+1]) # Measurements from propagated sigma points
     x = np.zeros([nx,N]) # Unscented state estimate
@@ -105,8 +115,15 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
         Sa[np.ix_(ix, ix)] = S
 
         # Only do this if R actually is time dependent
-        Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,i]) #.T #chol(Q(:,:,i));
-        Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,i]) #.T #chol(R(:,:,i));
+        if len(Q.shape) > 2: 
+            Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,i]) #.T #chol(Q(:,:,i));
+        else:
+            Sa[np.ix_(iq, iq)] = cholQ 
+
+        if len(Q.shape) > 2:
+            Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,i]) #.T #chol(R(:,:,i));
+        else:
+            Sa[np.ix_(ir, ir)] = cholR
 
         xa = np.vstack([x[:,i-1:i], np.zeros([nq,1]), np.zeros([nr,1])])
         gsa = np.hstack((g*Sa.T, -g*Sa.T)) + xa*np.ones([1, 2*L])
@@ -115,9 +132,15 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
         # Propagate sigma points
         j = 1
         for j in range(0, 2*L+1):
-            X[np.ix_(ix, [j])] = f(X[np.ix_(ix, [j])], 
-                                   u[:,i-1:i], 
-                                   X[np.ix_(iq, [j])])
+            try:
+                X[np.ix_(ix, [j])] = f(X[np.ix_(ix, [j])], 
+                                       u[:,i-1:i], 
+                                       X[np.ix_(iq, [j])],
+                                       y[:,i-1:i]) ### Allow f to have a copy of the measurements
+            except:
+                X[np.ix_(ix, [j])] = f(X[np.ix_(ix, [j])], 
+                                       u[:,i-1:i], 
+                                       X[np.ix_(iq, [j])])
 
             Y[:, j:j+1] = h(X[np.ix_(ix, [j])], 
                             u[:,i-1:i], 
@@ -145,6 +168,10 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
         qr_Q, qr_R = scipy.linalg.qr( ey[:, 1:].T )
         Syy = cholupdate(qr_R[np.ix_(iy, iy)], ey[:, 0], sgnW0)
         Syy = Syy
+
+        # if no measurements, skip update step
+        if np.any(np.isnan(y[:,i])):
+            continue
 
         # Update unscented estimate
         Syy[np.isnan(Syy)] = 0
