@@ -5,7 +5,7 @@ import scipy.linalg
 from ukf_sqrt.utils import cholupdate
 from ukf_sqrt.utils import nearestPD
 
-def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
+def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2, return_sigma_points=False):
 
     # %-----------------------------------------------------------------------
     # %Copyright (C) Floris van Breugel, 2021.
@@ -111,6 +111,8 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
         P[:,:,0] = 10*np.eye(nx)
     S = linalg.cholesky(P[:,:,0])#.T
 
+    sigma_points = []
+
     for i in range(1, N):
         Sa[np.ix_(ix, ix)] = S
 
@@ -132,6 +134,7 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
         # Propagate sigma points
         j = 1
         for j in range(0, 2*L+1):
+
             try:
                 X[np.ix_(ix, [j])] = f(X[np.ix_(ix, [j])], 
                                        u[:,i-1:i], 
@@ -147,6 +150,9 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
                             X[np.ix_(ir, [j])])
 
             
+        
+        if return_sigma_points:
+            sigma_points.append(X[np.ix_(ix, np.arange(0, X.shape[1]))])
         # Average propagated sigma points
         x[:,i:i+1] = X[np.ix_(ix, np.arange(0, X.shape[1]))]*Wm.T
         yf = Y*Wm.T
@@ -197,4 +203,13 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2):
     for i in range(nx):
         s[i,:] = np.sqrt( P[i,i,:].squeeze() )
         
-    return x, P, s
+    if return_sigma_points:
+        sigma_points = np.dstack(sigma_points)
+        sigma_points_sorted = np.zeros_like(sigma_points)
+        for n in range(sigma_points.shape[0]):
+            for i in range(sigma_points.shape[2]):
+                sigma_points_sorted[n,:,i] = np.sort(sigma_points[n,:,i])
+
+        return x, P, s, sigma_points_sorted
+    else:
+        return x, P, s
