@@ -5,7 +5,7 @@ import scipy.linalg
 from ukf_sqrt.utils import cholupdate
 from ukf_sqrt.utils import nearestPD
 
-def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2, return_sigma_points=False):
+def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_points=False):
 
     # %-----------------------------------------------------------------------
     # %Copyright (C) Floris van Breugel, 2021.
@@ -108,13 +108,15 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2, return_sigma_po
     if P0 is not None:
         P[:,:,0] = np.diag(P0)
     else:
-        P[:,:,0] = 10*np.eye(nx)
+        P[:,:,0] = 1*np.eye(nx)
     S = linalg.cholesky(P[:,:,0])#.T
 
     sigma_points = []
 
     for i in range(1, N):
         Sa[np.ix_(ix, ix)] = S
+
+
 
         # Only do this if R actually is time dependent
         if len(Q.shape) > 2: 
@@ -173,7 +175,6 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2, return_sigma_po
 
         qr_Q, qr_R = scipy.linalg.qr( ey[:, 1:].T )
         Syy = cholupdate(qr_R[np.ix_(iy, iy)], ey[:, 0], sgnW0)
-        Syy = Syy
 
         # if no measurements, skip update step
         if np.any(np.isnan(y[:,i])):
@@ -190,7 +191,7 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.001, beta=2, return_sigma_po
         x[:,i:i+1] = x[:,i:i+1] + K*(y[:,i:i+1] - h(x[:,i:i+1], u[:,i:i+1], np.zeros([nr,1])));
         U = K*Syy.T
         for j in range(ny):
-            S = cholupdate(S, np.ravel(U[:,j]), sgnW0)
+            S = cholupdate(S, np.ravel(U[:,j]), -1) # or use sgnW0? 
             #print(S)
             #S = nearestPD(S)
             S[np.isnan(S)] = 0
