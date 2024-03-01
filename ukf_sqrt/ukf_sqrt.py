@@ -176,9 +176,6 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
         # CORRECTION ( I THINK ):
         S = ( linalg.cholesky(ex@ex.T).T )/np.sqrt(2)
 
-        if i in [1,2,3,4]:
-            print(S)
-
         # NATHAN POWELL's CODE:
         #qr_Q, qr_R = scipy.linalg.qr( ey[:, 1:].T )
         #Syy = cholupdate(qr_R[np.ix_(iy, iy)], ey[:, 0], sgnW0)
