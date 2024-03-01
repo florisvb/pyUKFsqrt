@@ -87,15 +87,15 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
     Sa = np.zeros([L,L])
 
     if len(Q.shape) > 2:
-        Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,0])#.T
+        Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,0]).T
     else:
-        cholQ = linalg.cholesky(Q[:,:])
+        cholQ = linalg.cholesky(Q[:,:]).T
         Sa[np.ix_(iq, iq)] = cholQ
 
     if len(R.shape) > 2:
-        Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,0])#.T
+        Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,0]).T
     else:
-        cholR = linalg.cholesky(R[:,:])
+        cholR = linalg.cholesky(R[:,:]).T
         Sa[np.ix_(ir, ir)] = cholR
 
     Y = np.zeros([ny, 2*L+1]) # Measurements from propagated sigma points
@@ -109,7 +109,7 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
         P[:,:,0] = np.diag(P0)
     else:
         P[:,:,0] = 1*np.eye(nx)
-    S = linalg.cholesky(P[:,:,0])#.T
+    S = linalg.cholesky(P[:,:,0]).T
 
     sigma_points = []
 
@@ -120,12 +120,12 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
 
         # Only do this if R actually is time dependent
         if len(Q.shape) > 2: 
-            Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,i]) #.T #chol(Q(:,:,i));
+            Sa[np.ix_(iq, iq)] = linalg.cholesky(Q[:,:,i]).T #chol(Q(:,:,i));
         else:
             Sa[np.ix_(iq, iq)] = cholQ 
 
         if len(Q.shape) > 2:
-            Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,i]) #.T #chol(R(:,:,i));
+            Sa[np.ix_(ir, ir)] = linalg.cholesky(R[:,:,i]).T #chol(R(:,:,i));
         else:
             Sa[np.ix_(ir, ir)] = cholR
 
@@ -134,7 +134,6 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
         X = np.hstack([xa, gsa])
 
         # Propagate sigma points
-        j = 1
         for j in range(0, 2*L+1):
 
             try:
@@ -170,11 +169,23 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
             
             Pxy = Pxy + Wc[0,j]*(X[np.ix_(ix, [j])] - x[:,i:i+1])*(Y[:,j:j+1] - yf).T
 
-        qr_Q, qr_R = scipy.linalg.qr( (ex[:, 1:].T) )
-        S = cholupdate(qr_R[np.ix_(ix, ix)], ex[:, 0], sgnW0)
+        # NATHAN POWELL's CODE:
+        #qr_Q, qr_R = scipy.linalg.qr( (ex[:, 1:].T) )
+        #S = cholupdate(qr_R[np.ix_(ix, ix)], ex[:, 0], sgnW0)
 
-        qr_Q, qr_R = scipy.linalg.qr( ey[:, 1:].T )
-        Syy = cholupdate(qr_R[np.ix_(iy, iy)], ey[:, 0], sgnW0)
+        # CORRECTION ( I THINK ):
+        S = ( linalg.cholesky(ex@ex.T).T )/np.sqrt(2)
+
+        if i in [1,2,3,4]:
+            print(S)
+
+        # NATHAN POWELL's CODE:
+        #qr_Q, qr_R = scipy.linalg.qr( ey[:, 1:].T )
+        #Syy = cholupdate(qr_R[np.ix_(iy, iy)], ey[:, 0], sgnW0)
+
+        # CORRECTION ( I THINK ):
+        Syy = ( linalg.cholesky(ey@ey.T).T )/np.sqrt(2)
+
 
         # if no measurements, skip update step
         if np.any(np.isnan(y[:,i])):
@@ -183,6 +194,7 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
         # Update unscented estimate
         Syy[np.isnan(Syy)] = 0
         SyyTSyy = Syy.T*Syy
+        #SyyTSyy = Syy*Syy.T
         SyyTSyy[np.isnan(SyyTSyy)] = 0
         Syy_pinv = np.linalg.pinv(SyyTSyy)
         Syy_pinv[np.isnan(Syy_pinv)] = 0
@@ -197,7 +209,8 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
             S[np.isnan(S)] = 0
             #S[np.isinf(S)] = 10000
 
-        P[:,:,i] = S.T*S
+        P[:,:,i] = S.T*S*4
+        #P[:,:,i] = S*S.T
         #P[:,:,i] = nearestPD(P[:,:,i])
         
     s = np.zeros([nx,y.shape[1]]);
