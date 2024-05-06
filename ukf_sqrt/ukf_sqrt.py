@@ -200,7 +200,7 @@ def ukf_sqrt(y, x0, f, h, Q, R, u, P0=None, alpha=0.01, beta=2, return_sigma_poi
         x[:,i:i+1] = x[:,i:i+1] + K*(y[:,i:i+1] - h(x[:,i:i+1], u[:,i:i+1], np.zeros([nr,1])));
         U = K*Syy.T
         for j in range(ny):
-            S = cholupdate(S, np.ravel(U[:,j]), -1) # or use sgnW0? 
+            S = cholupdate(S, np.ravel(U[:,j]), sgnW0) #-1) # or use sgnW0? 
             #print(S)
             #S = nearestPD(S)
             S[np.isnan(S)] = 0
